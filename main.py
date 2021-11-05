@@ -1,11 +1,11 @@
 # coding: utf8
-import sys
 from unicodedata import normalize
 
 import api_driver
 import excel_parser
 import os
-
+import signal
+import sys
 
 TOKEN_ARG = ['token', 't', '-t', '-token']
 PATH_ARG = ['path', 'p', '-p', '-path']
@@ -29,6 +29,15 @@ def find_file(position, name, path):
                 return os.path.join(dir, file)
 
 
+def signal_handler(sig, frame):
+    xlparser.save()
+    sys.exit(0)
+
+
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
+signal.signal(signal.SIGABRT, signal_handler)
+
 if __name__ == "__main__":
     arguments = {i.split("=")[0]: i.split("=")[1] for i in sys.argv[1::]}
     token = get_arg(TOKEN_ARG, arguments)
@@ -36,10 +45,13 @@ if __name__ == "__main__":
 
     xlparser = excel_parser.ExcelParser(path, ["position", "full_name", "wage", "comment", "status"])
     driver = api_driver.ApiDriver(token, "https://dev-100-api.huntflow.dev/")
-    for i in xlparser.get_next_line():
-        file = find_file(i["position"], i["full_name"], path)
-        file_parsed = driver.add_file(file)
-        applicant_id = driver.add_applicant(i, file_parsed)
-        driver.match_vacancy_and_candidate(applicant_id, i["position"], i["status"], i["comment"], file_parsed["file_id"])
 
-
+    try:
+        for i in xlparser.get_next_line():
+            file = find_file(i["position"], i["full_name"], path)
+            file_parsed = driver.add_file(file)
+            applicant_id = driver.add_applicant(i, file_parsed)
+            driver.match_vacancy_and_candidate(applicant_id, i["position"], i["status"], i["comment"],
+                                               file_parsed["file_id"])
+    except Exception as e:
+        xlparser.save()
